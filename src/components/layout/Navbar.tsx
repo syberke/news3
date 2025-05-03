@@ -28,6 +28,9 @@ import { useTheme } from "@/context/ThemeContext";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import AuthForm from "@/components/auth/AuthForm";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useEffect as useEffectOnce, useState as useStateOnce } from "react";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/services/firebase";
 
 const Navbar = () => {
   const { user, isAdmin } = useAuth();
@@ -37,6 +40,7 @@ const Navbar = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const auth = getAuth();
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -52,6 +56,38 @@ const Navbar = () => {
       window.removeEventListener("scroll", handleScroll);
     };
   }, []);
+
+  // Fetch user avatar from Firestore whenever the user changes
+  useEffect(() => {
+    const fetchUserAvatar = async () => {
+      if (!user) {
+        setUserAvatar(null);
+        return;
+      }
+      
+      try {
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("uid", "==", user.uid));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const userData = querySnapshot.docs[0].data();
+          if (userData.avatarUrl) {
+            setUserAvatar(userData.avatarUrl);
+          } else {
+            setUserAvatar(user.photoURL);
+          }
+        } else {
+          setUserAvatar(user.photoURL);
+        }
+      } catch (error) {
+        console.error("Error fetching user avatar:", error);
+        setUserAvatar(user.photoURL);
+      }
+    };
+
+    fetchUserAvatar();
+  }, [user]);
 
   const handleLogout = async () => {
     try {
@@ -146,7 +182,7 @@ const Navbar = () => {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.photoURL || ""} />
+                    <AvatarImage src={userAvatar || ""} />
                     <AvatarFallback>{user.email?.charAt(0).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   {isAdmin && (

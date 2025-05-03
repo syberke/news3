@@ -1,12 +1,14 @@
 
 import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/layout/Navbar";
+import Footer from "@/components/layout/Footer";
+import Hero from "@/components/hero/Hero";
 import NewsFeed from "@/components/news/NewsFeed";
-import { initializeApp } from "firebase/app";
+import NewsletterSubscribe from "@/components/newsletter/NewsletterSubscribe";
+import OurTeam from "@/components/team/OurTeam";
 import { 
-  getAuth, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signInWithPopup, 
@@ -19,21 +21,9 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { Link } from "react-router-dom";
 import AuthForm from "@/components/auth/AuthForm";
+import { auth } from "@/services/firebase";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBVV_2-Jfi6yWOmlNeFAn3KlhmPHO1Y-ew",
-  authDomain: "news-c97d6.firebaseapp.com",
-  projectId: "news-c97d6",
-  storageBucket: "news-c97d6.firebasestorage.app",
-  messagingSenderId: "123459649936",
-  appId: "1:123459649936:web:53c1287c342ba12fe8b315",
-  measurementId: "G-CJMB9F3EY5"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-
-// Admin account credentials
+// Admin account credentials - make sure these match the email in AuthContext
 const ADMIN_EMAIL = "admin@firenews.com";
 const ADMIN_PASSWORD = "Admin123!";
 
@@ -167,20 +157,29 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="container mx-auto px-4 py-6">
-        {isAdmin && (
-          <div className="mb-4">
-            <Link to="/admin">
-              <Button>
-                Admin Dashboard
-              </Button>
-            </Link>
-          </div>
-        )}
-        <NewsFeed />
-      </div>
+      
+      <Hero />
+      
+      <main className="flex-grow">
+        <div className="container mx-auto px-4 py-6">
+          {isAdmin && (
+            <div className="mb-6">
+              <Link to="/admin">
+                <Button>
+                  Admin Dashboard
+                </Button>
+              </Link>
+            </div>
+          )}
+          <NewsFeed />
+          <OurTeam />
+          <NewsletterSubscribe />
+        </div>
+      </main>
+      
+      <Footer />
     </div>
   );
 };

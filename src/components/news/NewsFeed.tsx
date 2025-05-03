@@ -1,10 +1,12 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import NewsCard from "./NewsCard";
+import NewsCardSkeleton from "./NewsCardSkeleton";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { getFirestore, collection, getDocs, query, where, orderBy } from "firebase/firestore";
-import { Skeleton } from "@/components/ui/skeleton";
+import { motion } from "framer-motion";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface NewsItem {
   id: string;
@@ -23,6 +25,7 @@ const NewsFeed = () => {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const db = getFirestore();
+  const newsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchNews();
@@ -92,74 +95,120 @@ const NewsFeed = () => {
     return matchesSearch && matchesCategory;
   });
 
+  // Animation variants for scroll animations
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: {
+        type: "spring",
+        stiffness: 100,
+        damping: 12
+      }
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8 relative">
         <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
         <Input
           type="text"
-          placeholder="Search news..."
-          className="pl-10"
+          placeholder="Cari berita..."
+          className="pl-10 transition-all duration-300 focus:ring-2 focus:ring-primary/60 focus:border-primary"
           value={searchTerm}
           onChange={handleSearchChange}
         />
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => handleCategoryClick(null)}
-          className={`px-4 py-2 rounded-full text-sm ${
-            activeCategory === null
-              ? "bg-primary text-white"
-              : "bg-secondary hover:bg-secondary/80"
-          }`}
-        >
-          All
-        </button>
-        {getUniqueCategories().map(category => (
-          <button
-            key={category}
-            onClick={() => handleCategoryClick(category)}
-            className={`px-4 py-2 rounded-full text-sm ${
-              activeCategory === category
-                ? "bg-primary text-white"
+      <ScrollArea className="max-h-16 overflow-auto pb-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-2">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handleCategoryClick(null)}
+            className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition-all duration-300 ${
+              activeCategory === null
+                ? "bg-primary text-white shadow-md"
                 : "bg-secondary hover:bg-secondary/80"
             }`}
           >
-            {category}
-          </button>
-        ))}
-      </div>
-      
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="flex flex-col space-y-3">
-              <Skeleton className="h-[200px] w-full" />
-              <Skeleton className="h-5 w-[250px]" />
-              <Skeleton className="h-4 w-[200px]" />
-              <Skeleton className="h-4 w-[150px]" />
-            </div>
+            Semua
+          </motion.button>
+          {getUniqueCategories().map(category => (
+            <motion.button
+              key={category}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => handleCategoryClick(category)}
+              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition-all duration-300 ${
+                activeCategory === category
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-secondary hover:bg-secondary/80"
+              }`}
+            >
+              {category}
+            </motion.button>
           ))}
         </div>
-      ) : (
-        <>
-          {filteredNews.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredNews.map((news) => (
-                <NewsCard key={news.id} {...news} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-10">
-              <h3 className="text-xl font-medium">No news found</h3>
-              <p className="text-muted-foreground">
-                {searchTerm ? "Try a different search term" : "Check back later for updates"}
-              </p>
-            </div>
-          )}
-        </>
-      )}
+      </ScrollArea>
+      
+      <div ref={newsRef}>
+        {isLoading ? (
+          <motion.div 
+            initial="hidden"
+            animate="visible"
+            variants={containerVariants}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
+            {[...Array(6)].map((_, i) => (
+              <motion.div key={i} variants={itemVariants}>
+                <NewsCardSkeleton />
+              </motion.div>
+            ))}
+          </motion.div>
+        ) : (
+          <>
+            {filteredNews.length > 0 ? (
+              <motion.div 
+                initial="hidden"
+                animate="visible"
+                variants={containerVariants}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                {filteredNews.map((news) => (
+                  <motion.div key={news.id} variants={itemVariants}>
+                    <NewsCard {...news} />
+                  </motion.div>
+                ))}
+              </motion.div>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="text-center py-16"
+              >
+                <h3 className="text-2xl font-medium mb-2">Tidak ada berita ditemukan</h3>
+                <p className="text-muted-foreground">
+                  {searchTerm ? "Coba kata kunci lain" : "Periksa kembali nanti untuk pembaruan"}
+                </p>
+              </motion.div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

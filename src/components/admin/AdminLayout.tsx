@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
@@ -35,6 +35,9 @@ import { useToast } from "@/components/ui/use-toast";
 import { getAuth, signOut } from "firebase/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/services/firebase";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -48,6 +51,7 @@ const AdminLayout = ({ children, pageTitle }: AdminLayoutProps) => {
   const { toast } = useToast();
   const auth = getAuth();
   const [searchQuery, setSearchQuery] = useState("");
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
   const menuItems = [
     {
@@ -76,6 +80,38 @@ const AdminLayout = ({ children, pageTitle }: AdminLayoutProps) => {
       icon: User,
     },
   ];
+
+  // Fetch user avatar from Firestore whenever the user changes
+  useEffect(() => {
+    const fetchUserAvatar = async () => {
+      if (!user) {
+        setUserAvatar(null);
+        return;
+      }
+      
+      try {
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("uid", "==", user.uid));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const userData = querySnapshot.docs[0].data();
+          if (userData.avatarUrl) {
+            setUserAvatar(userData.avatarUrl);
+          } else {
+            setUserAvatar(user.photoURL);
+          }
+        } else {
+          setUserAvatar(user.photoURL);
+        }
+      } catch (error) {
+        console.error("Error fetching user avatar:", error);
+        setUserAvatar(user.photoURL);
+      }
+    };
+
+    fetchUserAvatar();
+  }, [user]);
 
   const handleLogout = async () => {
     try {
@@ -197,8 +233,15 @@ const AdminLayout = ({ children, pageTitle }: AdminLayoutProps) => {
                     <Bell className="h-5 w-5" />
                     <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
                   </Button>
-                  <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary-foreground" />
+                  <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+                    {userAvatar ? (
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={userAvatar} alt={user?.displayName || 'Admin'} />
+                        <AvatarFallback>{user?.email?.charAt(0).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <User className="h-4 w-4" />
+                    )}
                   </div>
                 </div>
               </div>

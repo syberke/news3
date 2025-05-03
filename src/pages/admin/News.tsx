@@ -36,13 +36,7 @@ import {
   orderBy,
   where
 } from "firebase/firestore";
-import { 
-  getStorage, 
-  ref, 
-  uploadBytes, 
-  getDownloadURL,
-  deleteObject 
-} from "firebase/storage";
+import { uploadToCloudinary } from "@/utils/cloudinary";
 import { useTheme } from "@/context/ThemeContext";
 
 interface NewsItem {
@@ -53,6 +47,7 @@ interface NewsItem {
   status: string;
   date: string;
   imageUrl: string;
+  likes?: number;
 }
 
 const AdminNews = () => {
@@ -73,7 +68,6 @@ const AdminNews = () => {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   
   const db = getFirestore();
-  const storage = getStorage();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -126,11 +120,9 @@ const AdminNews = () => {
     try {
       let imageUrl = "";
       
-      // Upload image if selected
+      // Upload image to Cloudinary if selected
       if (selectedFile) {
-        const storageRef = ref(storage, `news/${Date.now()}_${selectedFile.name}`);
-        await uploadBytes(storageRef, selectedFile);
-        imageUrl = await getDownloadURL(storageRef);
+        imageUrl = await uploadToCloudinary(selectedFile);
       } else {
         // Default image if none selected
         imageUrl = "https://source.unsplash.com/random/800x600/?news";
@@ -144,7 +136,8 @@ const AdminNews = () => {
         category,
         status,
         date: today,
-        imageUrl
+        imageUrl,
+        likes: 0 // Initialize likes counter
       });
       
       toast({
@@ -207,22 +200,8 @@ const AdminNews = () => {
 
       // Upload new image if selected
       if (selectedFile) {
-        // Delete old image if it's from Firebase Storage
-        if (currentImageUrl && currentImageUrl.includes("firebasestorage")) {
-          try {
-            // Extract the path from the URL
-            const oldImagePath = decodeURIComponent(currentImageUrl.split('/o/')[1].split('?')[0]);
-            const oldImageRef = ref(storage, oldImagePath);
-            await deleteObject(oldImageRef);
-          } catch (error) {
-            console.error("Error deleting old image:", error);
-          }
-        }
-        
-        // Upload new image
-        const storageRef = ref(storage, `news/${Date.now()}_${selectedFile.name}`);
-        await uploadBytes(storageRef, selectedFile);
-        const imageUrl = await getDownloadURL(storageRef);
+        // Upload to Cloudinary
+        const imageUrl = await uploadToCloudinary(selectedFile);
         updatedNews.imageUrl = imageUrl;
       }
       
@@ -267,20 +246,6 @@ const AdminNews = () => {
   const handleDeleteNews = async () => {
     setIsLoading(true);
     try {
-      // Get the news item to delete
-      const newsItem = news.find(item => item.id === currentNewsId);
-      
-      if (newsItem && newsItem.imageUrl && newsItem.imageUrl.includes("firebasestorage")) {
-        try {
-          // Extract the path from the URL
-          const imagePath = decodeURIComponent(newsItem.imageUrl.split('/o/')[1].split('?')[0]);
-          const imageRef = ref(storage, imagePath);
-          await deleteObject(imageRef);
-        } catch (error) {
-          console.error("Error deleting image:", error);
-        }
-      }
-      
       const newsRef = doc(db, "news", currentNewsId);
       await deleteDoc(newsRef);
       
@@ -360,6 +325,7 @@ const AdminNews = () => {
                     <TableHead>Kategori</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tanggal</TableHead>
+                    <TableHead>Likes</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -373,6 +339,7 @@ const AdminNews = () => {
                         <TableCell>{item.category}</TableCell>
                         <TableCell>{item.status}</TableCell>
                         <TableCell>{item.date}</TableCell>
+                        <TableCell>{item.likes || 0}</TableCell>
                         <TableCell className="text-right">
                           <Button 
                             variant="ghost" 
@@ -393,7 +360,7 @@ const AdminNews = () => {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center">
+                      <TableCell colSpan={6} className="text-center">
                         {searchTerm ? "Tidak ada berita yang sesuai dengan pencarian" : "Belum ada berita"}
                       </TableCell>
                     </TableRow>
@@ -472,7 +439,7 @@ const AdminNews = () => {
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="image">Gambar Berita</Label>
+              <Label htmlFor="image">Gambar Berita (Cloudinary)</Label>
               <Input
                 id="image"
                 type="file"
@@ -566,7 +533,7 @@ const AdminNews = () => {
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="edit-image">Gambar Berita (opsional)</Label>
+              <Label htmlFor="edit-image">Gambar Berita (Cloudinary)</Label>
               <Input
                 id="edit-image"
                 type="file"

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { 
@@ -22,14 +23,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
+import { Camera } from "lucide-react";
+import { uploadToCloudinary } from "@/utils/cloudinary";
 
 const UserProfile = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [userData, setUserData] = useState({
     name: "",
     email: "",
@@ -231,6 +235,62 @@ const UserProfile = () => {
     }
   };
 
+  const handleProfilePictureChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !user) return;
+    
+    const file = e.target.files[0];
+    
+    try {
+      setIsUploadingImage(true);
+      
+      // Upload to Cloudinary
+      const imageUrl = await uploadToCloudinary(file);
+      
+      // Update Firestore user document
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("uid", "==", user.uid));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const userDoc = querySnapshot.docs[0];
+        await updateDoc(doc(db, "users", userDoc.id), {
+          avatarUrl: imageUrl
+        });
+      } else {
+        // Create user document if it doesn't exist
+        const usersCollection = collection(db, "users");
+        await updateDoc(doc(usersCollection, user.uid), {
+          uid: user.uid,
+          name: user.displayName || "",
+          email: user.email || "",
+          role: "User",
+          avatarUrl: imageUrl
+        });
+      }
+      
+      // Update local state
+      setUserData({
+        ...userData,
+        avatarUrl: imageUrl
+      });
+      
+      toast({
+        title: "Foto Profil Diperbarui",
+        description: "Foto profil Anda telah berhasil diperbarui.",
+      });
+      
+    } catch (error: any) {
+      console.error("Error updating profile picture:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Gagal memperbarui foto profil",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
@@ -251,17 +311,43 @@ const UserProfile = () => {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <Avatar className="h-16 w-16">
-            {userData.avatarUrl ? (
-              <AvatarImage src={userData.avatarUrl} alt={userData.name} />
-            ) : (
-              <AvatarFallback>{userData.name.charAt(0)}</AvatarFallback>
+        <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
+          <div className="relative">
+            <Avatar className="h-24 w-24">
+              {userData.avatarUrl ? (
+                <AvatarImage src={userData.avatarUrl} alt={userData.name} />
+              ) : (
+                <AvatarFallback className="text-xl">{userData.name.charAt(0)}</AvatarFallback>
+              )}
+            </Avatar>
+            
+            <div className="absolute bottom-0 right-0">
+              <label htmlFor="profile-picture" className="cursor-pointer">
+                <div className="bg-primary text-white p-2 rounded-full hover:bg-primary/80 transition-colors">
+                  <Camera className="h-4 w-4" />
+                </div>
+                <input 
+                  type="file" 
+                  id="profile-picture" 
+                  accept="image/*"
+                  className="hidden" 
+                  onChange={handleProfilePictureChange}
+                  disabled={isUploadingImage}
+                />
+              </label>
+            </div>
+            
+            {isUploadingImage && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full">
+                <Spinner />
+              </div>
             )}
-          </Avatar>
+          </div>
+          
           <div>
             <h1 className="text-2xl font-bold">{userData.name}</h1>
             <p className="text-muted-foreground">{userData.role}</p>
+            <p className="text-sm text-muted-foreground">{userData.email}</p>
           </div>
         </div>
 

@@ -91,7 +91,7 @@ const AdminDashboard = () => {
           </TabsList>
           <TabsContent value="overview" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card>
+              <Card className="hover:shadow-md transition-all">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
                     Total Pengguna
@@ -104,7 +104,7 @@ const AdminDashboard = () => {
                   </p>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="hover:shadow-md transition-all">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
                     Artikel Dibuat
@@ -117,7 +117,7 @@ const AdminDashboard = () => {
                   </p>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="hover:shadow-md transition-all">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
                     Kategori
@@ -130,7 +130,7 @@ const AdminDashboard = () => {
                   </p>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="hover:shadow-md transition-all">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
                     Kunjungan
@@ -145,7 +145,7 @@ const AdminDashboard = () => {
               </Card>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <Card className="col-span-1">
+              <Card className="col-span-1 hover:shadow-md transition-all">
                 <CardHeader>
                   <CardTitle>Pengguna Baru</CardTitle>
                 </CardHeader>
@@ -162,7 +162,7 @@ const AdminDashboard = () => {
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
-              <Card className="col-span-1">
+              <Card className="col-span-1 hover:shadow-md transition-all">
                 <CardHeader>
                   <CardTitle>Artikel Dibuat</CardTitle>
                 </CardHeader>

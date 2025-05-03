@@ -1,588 +1,442 @@
-import AdminLayout from "@/components/admin/AdminLayout";
+
 import { useState, useEffect } from "react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Search, UserPlus } from "lucide-react";
+import AdminLayout from "@/components/admin/AdminLayout";
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import { Search, User, Edit, Trash, UserPlus, UserCheck, UserX } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { fetchAllUsers, User as UserType } from "@/services/userService";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Dialog, 
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
   DialogFooter,
-  DialogDescription 
+  DialogTrigger
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  getFirestore,
-  collection,
-  addDoc,
-  getDocs,
-  doc,
-  updateDoc,
-  deleteDoc,
-  query,
-  orderBy,
-  where,
-  getDoc
-} from "firebase/firestore";
-import {
-  getAuth,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  deleteUser,
-  updateEmail
-} from "firebase/auth";
-
-interface User {
-  id: string;
-  uid: string;
-  name: string;
-  email: string;
-  role: string;
-  status: string;
-  lastLogin?: string;
-}
+import { Button } from "@/components/ui/button";
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { useToast } from "@/hooks/use-toast";
+import { createUser, updateUser, deleteUser } from "@/services/userService";
+import { useAuth } from "@/context/AuthContext";
 
 const AdminUsers = () => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [users, setUsers] = useState<User[]>([]);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [users, setUsers] = useState<UserType[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState("User");
-  const [status, setStatus] = useState("Active");
-  const [password, setPassword] = useState("");
-  const [currentUserId, setCurrentUserId] = useState("");
-  const [currentUserUid, setCurrentUserUid] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const db = getFirestore();
-  const auth = getAuth();
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { toast } = useToast();
-  
+  const { setUserRole } = useAuth();
+
+  const createForm = useForm({
+    defaultValues: {
+      email: "",
+      displayName: "",
+      password: "",
+      role: "User" as "Admin" | "User"
+    }
+  });
+
+  const editForm = useForm({
+    defaultValues: {
+      displayName: "",
+      role: "User" as "Admin" | "User"
+    }
+  });
+
   useEffect(() => {
-    fetchUsers();
+    loadUsers();
   }, []);
 
-  const fetchUsers = async () => {
+  useEffect(() => {
+    if (selectedUser && isEditDialogOpen) {
+      editForm.reset({
+        displayName: selectedUser.displayName || "",
+        role: selectedUser.isAdmin ? "Admin" : "User"
+      });
+    }
+  }, [selectedUser, isEditDialogOpen]);
+
+  const loadUsers = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      const usersCollection = collection(db, "users");
-      const usersSnapshot = await getDocs(
-        query(usersCollection, orderBy("name"))
-      );
-      
-      const usersList = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as User[];
-      
-      setUsers(usersList);
+      const usersData = await fetchAllUsers();
+      setUsers(usersData);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      console.error("Error loading users:", error);
       toast({
         title: "Error",
         description: "Gagal memuat data pengguna",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAddUser = async () => {
-    if (!name || !email || !password) {
-      toast({
-        title: "Error",
-        description: "Semua field harus diisi",
-        variant: "destructive",
-      });
-      return;
-    }
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
 
-    setIsLoading(true);
+  const handleCreateUser = async (data: any) => {
     try {
-      // Create user with Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(
-        auth, 
-        email, 
-        password
-      );
-      
-      // Add user to Firestore
-      const today = new Date().toISOString().split('T')[0];
-      
-      await addDoc(collection(db, "users"), {
-        uid: userCredential.user.uid,
-        name,
-        email,
-        role,
-        status,
-        createdAt: today,
-        lastLogin: today
-      });
-      
+      await createUser(data);
       toast({
         title: "Berhasil",
-        description: "Pengguna berhasil ditambahkan",
+        description: "Pengguna berhasil dibuat"
       });
-      
-      // Reset form
-      setName("");
-      setEmail("");
-      setRole("User");
-      setStatus("Active");
-      setPassword("");
-      setIsAddDialogOpen(false);
-      
-      // Refresh users list
-      fetchUsers();
+      setIsCreateDialogOpen(false);
+      createForm.reset();
+      loadUsers();
     } catch (error: any) {
-      console.error("Error adding user:", error);
       toast({
         title: "Error",
-        description: error.message || "Gagal menambahkan pengguna",
-        variant: "destructive",
+        description: error.message || "Gagal membuat pengguna",
+        variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const handleEditClick = (user: User) => {
-    setCurrentUserId(user.id);
-    setCurrentUserUid(user.uid);
-    setName(user.name);
-    setEmail(user.email);
-    setRole(user.role);
-    setStatus(user.status);
-    setIsEditDialogOpen(true);
-  };
+  const handleUpdateUser = async (data: any) => {
+    if (!selectedUser) return;
 
-  const handleUpdateUser = async () => {
-    if (!name || !email) {
-      toast({
-        title: "Error",
-        description: "Semua field harus diisi",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoading(true);
     try {
-      const userRef = doc(db, "users", currentUserId);
-      await updateDoc(userRef, {
-        name,
-        email,
-        role,
-        status
-      });
+      const updatedUser = {
+        ...selectedUser,
+        displayName: data.displayName,
+      };
+
+      await updateUser(selectedUser.id, updatedUser);
+      
+      // Update role if changed
+      if ((data.role === "Admin" && !selectedUser.isAdmin) || 
+          (data.role === "User" && selectedUser.isAdmin)) {
+        await setUserRole(selectedUser.id, data.role);
+      }
       
       toast({
         title: "Berhasil",
-        description: "Pengguna berhasil diperbarui",
+        description: "Pengguna berhasil diperbarui"
       });
-      
-      // Reset form
-      setName("");
-      setEmail("");
-      setRole("User");
-      setStatus("Active");
-      setCurrentUserId("");
       setIsEditDialogOpen(false);
-      
-      // Refresh users list
-      fetchUsers();
-    } catch (error) {
-      console.error("Error updating user:", error);
-      toast({
-        title: "Error",
-        description: "Gagal memperbarui pengguna",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleChangeRole = async (userId: string, userUid: string, newRole: string) => {
-    try {
-      setIsLoading(true);
-      const userRef = doc(db, "users", userId);
-      await updateDoc(userRef, {
-        role: newRole
-      });
-      
-      toast({
-        title: "Berhasil",
-        description: `Peran pengguna berhasil diubah menjadi ${newRole}`,
-      });
-      
-      // Refresh users list
-      fetchUsers();
-    } catch (error) {
-      console.error("Error changing user role:", error);
-      toast({
-        title: "Error",
-        description: "Gagal mengubah peran pengguna",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDeleteClick = (userId: string) => {
-    setCurrentUserId(userId);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const handleResetPassword = async (email: string) => {
-    try {
-      await sendPasswordResetEmail(auth, email);
-      toast({
-        title: "Berhasil",
-        description: "Email reset password telah dikirim",
-      });
+      loadUsers();
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Gagal mengirim email reset password",
-        variant: "destructive",
+        description: error.message || "Gagal memperbarui pengguna",
+        variant: "destructive"
       });
     }
   };
 
   const handleDeleteUser = async () => {
-    setIsLoading(true);
+    if (!selectedUser) return;
+
     try {
-      const userRef = doc(db, "users", currentUserId);
-      await deleteDoc(userRef);
-      
+      await deleteUser(selectedUser.id);
       toast({
         title: "Berhasil",
-        description: "Pengguna berhasil dihapus",
+        description: "Pengguna berhasil dihapus"
       });
-      
-      setCurrentUserId("");
       setIsDeleteDialogOpen(false);
-      
-      // Refresh users list
-      fetchUsers();
-    } catch (error) {
-      console.error("Error deleting user:", error);
+      loadUsers();
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Gagal menghapus pengguna",
-        variant: "destructive",
+        description: error.message || "Gagal menghapus pengguna",
+        variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter((user) => {
+    return (
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.displayName && user.displayName.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  });
+
+  const getInitials = (name: string | null) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map(n => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
 
   return (
-    <AdminLayout pageTitle="Pengguna">
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="relative w-64">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari pengguna..."
-              className="pl-8"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <Button onClick={() => setIsAddDialogOpen(true)}>
-            <UserPlus className="mr-2 h-4 w-4" />
-            Tambah Pengguna
-          </Button>
-        </div>
-
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nama</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Peran</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Login Terakhir</TableHead>
-                <TableHead className="w-[70px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>{user.name}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                        user.role === "Admin" ? "bg-purple-100 text-purple-800" : "bg-blue-100 text-blue-800"
-                      }`}>
-                        {user.role}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                        user.status === "Active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                      }`}>
-                        {user.status}
-                      </span>
-                    </TableCell>
-                    <TableCell>{user.lastLogin || "-"}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Menu</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Tindakan</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleEditClick(user)}>
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleResetPassword(user.email)}>
-                            Reset Password
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuLabel>Ubah Peran</DropdownMenuLabel>
-                          <DropdownMenuItem 
-                            onClick={() => handleChangeRole(user.id, user.uid, "Admin")}
-                            disabled={user.role === "Admin"}
-                          >
-                            Jadikan Admin
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleChangeRole(user.id, user.uid, "User")}
-                            disabled={user.role === "User"}
-                          >
-                            Jadikan User
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-red-600"
-                            onClick={() => handleDeleteClick(user.id)}
-                          >
-                            Hapus
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center">
-                    {isLoading ? "Memuat data..." : "Tidak ada pengguna"}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+    <AdminLayout pageTitle="Kelola Pengguna">
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Daftar Pengguna</CardTitle>
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="flex items-center gap-2">
+                    <UserPlus className="h-4 w-4" />
+                    Tambah Pengguna
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Tambah Pengguna Baru</DialogTitle>
+                  </DialogHeader>
+                  <Form {...createForm}>
+                    <form onSubmit={createForm.handleSubmit(handleCreateUser)} className="space-y-4">
+                      <FormField
+                        control={createForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Email</FormLabel>
+                            <FormControl>
+                              <Input {...field} type="email" required />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={createForm.control}
+                        name="displayName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nama</FormLabel>
+                            <FormControl>
+                              <Input {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={createForm.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Password</FormLabel>
+                            <FormControl>
+                              <Input {...field} type="password" required />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={createForm.control}
+                        name="role"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Role</FormLabel>
+                            <FormControl>
+                              <select
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                                {...field}
+                              >
+                                <option value="User">User</option>
+                                <option value="Admin">Admin</option>
+                              </select>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <DialogFooter>
+                        <Button type="submit">Simpan</Button>
+                      </DialogFooter>
+                    </form>
+                  </Form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4 mb-4 relative">
+              <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+              <Input
+                placeholder="Cari pengguna..."
+                className="pl-10 max-w-sm"
+                value={searchTerm}
+                onChange={handleSearchChange}
+              />
+            </div>
+            
+            {isLoading ? (
+              <div className="space-y-4">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center space-x-4">
+                    <Skeleton className="h-12 w-12 rounded-full" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-[250px]" />
+                      <Skeleton className="h-4 w-[200px]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pengguna</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Last Login</TableHead>
+                      <TableHead>Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredUsers.length > 0 ? (
+                      filteredUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="flex items-center space-x-3">
+                            <Avatar>
+                              {user.photoURL ? (
+                                <AvatarImage src={user.photoURL} alt={user.displayName || ""} />
+                              ) : null}
+                              <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium">{user.displayName || 'Anonymous'}</span>
+                          </TableCell>
+                          <TableCell>{user.email}</TableCell>
+                          <TableCell>
+                            {user.isAdmin ? (
+                              <Badge variant="default">Admin</Badge>
+                            ) : (
+                              <Badge variant="secondary">User</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}</TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => {
+                                  setSelectedUser(user);
+                                  setIsEditDialogOpen(true);
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="text-destructive hover:bg-destructive/10"
+                                onClick={() => {
+                                  setSelectedUser(user);
+                                  setIsDeleteDialogOpen(true);
+                                }}
+                              >
+                                <Trash className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center">
+                          {searchTerm ? "Tidak ada pengguna yang sesuai dengan pencarian" : "Belum ada pengguna"}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Add User Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Tambah Pengguna Baru</DialogTitle>
-            <DialogDescription>
-              Masukkan informasi pengguna baru di bawah ini.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Nama</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Masukkan nama pengguna"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Masukkan email pengguna"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Masukkan password"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="role">Peran</Label>
-                <Select value={role} onValueChange={setRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih peran" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="User">User</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="status">Status</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-              Batal
-            </Button>
-            <Button onClick={handleAddUser} disabled={isLoading}>
-              {isLoading ? "Menyimpan..." : "Simpan"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Edit User Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Edit Pengguna</DialogTitle>
-            <DialogDescription>
-              Perbarui informasi pengguna.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="edit-name">Nama</Label>
-              <Input
-                id="edit-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input
-                id="edit-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-role">Peran</Label>
-                <Select value={role} onValueChange={setRole}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="User">User</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-status">Status</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Batal
-            </Button>
-            <Button onClick={handleUpdateUser} disabled={isLoading}>
-              {isLoading ? "Memperbarui..." : "Perbarui"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {selectedUser && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Pengguna</DialogTitle>
+            </DialogHeader>
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(handleUpdateUser)} className="space-y-4">
+                <FormField
+                  control={editForm.control}
+                  name="displayName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nama</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Role</FormLabel>
+                      <FormControl>
+                        <select
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                          {...field}
+                        >
+                          <option value="User">User</option>
+                          <option value="Admin">Admin</option>
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <Button type="submit">Simpan</Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Delete User Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hapus Pengguna</DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin menghapus pengguna ini? Tindakan ini tidak dapat dibatalkan.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
-              Batal
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteUser} disabled={isLoading}>
-              {isLoading ? "Menghapus..." : "Hapus"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {selectedUser && (
+        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Hapus Pengguna</DialogTitle>
+            </DialogHeader>
+            <div className="py-3">
+              <p>Apakah Anda yakin ingin menghapus pengguna <strong>{selectedUser.displayName || selectedUser.email}</strong>?</p>
+              <p className="text-sm text-muted-foreground mt-1">Tindakan ini tidak dapat dibatalkan.</p>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsDeleteDialogOpen(false)}
+              >
+                Batal
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteUser}
+              >
+                Hapus
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </AdminLayout>
   );
 };
