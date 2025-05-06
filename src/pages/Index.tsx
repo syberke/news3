@@ -22,6 +22,8 @@ import { useAuth } from "@/context/AuthContext";
 import { Link } from "react-router-dom";
 import AuthForm from "@/components/auth/AuthForm";
 import { auth } from "@/services/firebase";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, Mail } from "lucide-react";
 
 // Admin account credentials - make sure these match the email in AuthContext
 const ADMIN_EMAIL = "admin@firenews.com";
@@ -29,7 +31,7 @@ const ADMIN_PASSWORD = "Admin123!";
 
 const Index = () => {
   const { toast } = useToast();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isVerified, sendVerificationEmail } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -95,7 +97,7 @@ const Index = () => {
       await createUserWithEmailAndPassword(auth, email, password);
       toast({
         title: "Berhasil",
-        description: "Registrasi berhasil",
+        description: "Registrasi berhasil. Silahkan periksa email Anda untuk verifikasi.",
       });
     } catch (error: any) {
       toast({
@@ -139,6 +141,10 @@ const Index = () => {
     }
   };
 
+  const handleResendVerification = async () => {
+    await sendVerificationEmail();
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-subtle flex items-center justify-center p-4">
@@ -159,6 +165,31 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
+      
+      {/* Verification Banner */}
+      {user && !isAdmin && !isVerified && (
+        <div className="bg-amber-50 border-amber-200 border-b">
+          <div className="container mx-auto px-4 py-3">
+            <Alert variant="warning" className="bg-transparent border-0 p-0">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+              <AlertTitle className="text-amber-800">
+                Your account is not verified
+              </AlertTitle>
+              <AlertDescription className="text-amber-700 flex items-center gap-3">
+                <span>Please verify your email to access all features.</span>
+                <Button 
+                  onClick={handleResendVerification} 
+                  variant="outline" 
+                  size="sm"
+                  className="border-amber-500 hover:bg-amber-100"
+                >
+                  <Mail className="h-4 w-4 mr-2" /> Resend verification email
+                </Button>
+              </AlertDescription>
+            </Alert>
+          </div>
+        </div>
+      )}
       
       <Hero />
       

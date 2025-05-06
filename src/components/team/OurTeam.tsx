@@ -14,27 +14,28 @@ interface TeamMember {
 
 const teamMembers: TeamMember[] = [
   {
-    id: "1",
-    name: "Danish",
-    role: "Lead Developer",
-    avatarUrl: "https://i.pravatar.cc/300?img=11",
-    bio: "Full stack developer with expertise in React and Firebase"
+    "id": "1",
+    "name": "Danish",
+    "role": "Backend Developer",
+    "avatarUrl": "https://i.pravatar.cc/300?img=11",
+    "bio": "Backend developer with a focus on building scalable systems."
   },
   {
-    id: "2",
-    name: "Berke",
-    role: "UI/UX Designer",
-    avatarUrl: "https://i.pravatar.cc/300?img=12",
-    bio: "Creative designer with a passion for beautiful interfaces"
+    "id": "2",
+    "name": "Berke",
+    "role": "Lead Developer",
+    "avatarUrl": "https://i.pravatar.cc/300?img=12",
+    "bio": "Full stack developer with expertise in React and Firebase."
   },
   {
-    id: "3",
-    name: "Fadla",
-    role: "Product Manager",
-    avatarUrl: "https://i.pravatar.cc/300?img=13",
-    bio: "Expert in product strategy and user experience"
+    "id": "3",
+    "name": "Fadla",
+    "role": "Presenter",
+    "avatarUrl": "https://i.pravatar.cc/300?img=13",
+    "bio": "Presenter and expert in product strategy and user experience."
   }
 ];
+
 
 const OurTeam = () => {
   return (

@@ -2,11 +2,12 @@
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, ArrowRight, Heart } from "lucide-react";
+import { Calendar, ArrowRight, Heart, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { useState } from "react";
 import { getFirestore, doc, updateDoc, increment } from "firebase/firestore";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface NewsCardProps {
   id: string;
@@ -16,12 +17,14 @@ interface NewsCardProps {
   imageUrl: string;
   date: string;
   likes?: number;
+  commentsCount?: number;
 }
 
-const NewsCard = ({ id, title, content, category, imageUrl, date, likes = 0 }: NewsCardProps) => {
-  const [liked, setLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(likes);
+const NewsCard = ({ id, title, content, category, imageUrl, date, likes = 0, commentsCount = 0 }: NewsCardProps) => {
+  const { user, hasLikedArticle, addLikedArticle } = useAuth();
+  const { toast } = useToast();
   const db = getFirestore();
+  const isLiked = hasLikedArticle(id);
 
   // Format date to a more readable format
   const formatDate = (dateString: string) => {
@@ -37,7 +40,16 @@ const NewsCard = ({ id, title, content, category, imageUrl, date, likes = 0 }: N
     e.preventDefault(); // Prevent navigation
     e.stopPropagation(); // Stop event propagation
     
-    if (!liked) {
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please login to like articles",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!isLiked) {
       try {
         // Update likes in Firestore
         const newsRef = doc(db, "news", id);
@@ -45,11 +57,26 @@ const NewsCard = ({ id, title, content, category, imageUrl, date, likes = 0 }: N
           likes: increment(1)
         });
         
-        setLikesCount(prev => prev + 1);
-        setLiked(true);
+        // Add to user's liked articles
+        await addLikedArticle(id);
+        
+        toast({
+          title: "Liked!",
+          description: "Thank you for liking this article"
+        });
       } catch (error) {
         console.error("Error updating likes:", error);
+        toast({
+          title: "Error",
+          description: "Failed to like this article",
+          variant: "destructive"
+        });
       }
+    } else {
+      toast({
+        title: "Already liked",
+        description: "You've already liked this article",
+      });
     }
   };
 
@@ -76,16 +103,24 @@ const NewsCard = ({ id, title, content, category, imageUrl, date, likes = 0 }: N
             <Calendar className="h-3 w-3" />
             {formatDate(date)}
           </span>
-          <div className="flex items-center gap-1">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-6 w-6 p-0" 
-              onClick={handleLike}
-            >
-              <Heart className={`h-4 w-4 ${liked ? 'fill-red-500 text-red-500' : ''}`} />
-            </Button>
-            <span className="text-xs text-muted-foreground">{likesCount}</span>
+          <div className="flex items-center gap-4">
+            {/* Comments count */}
+            <div className="flex items-center gap-1">
+              <MessageSquare className="h-4 w-4 text-gray-500" />
+              <span className="text-xs text-muted-foreground">{commentsCount}</span>
+            </div>
+            {/* Likes count */}
+            <div className="flex items-center gap-1">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-6 w-6 p-0" 
+                onClick={handleLike}
+              >
+                <Heart className={`h-4 w-4 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+              </Button>
+              <span className="text-xs text-muted-foreground">{likes}</span>
+            </div>
           </div>
         </div>
         <CardTitle className="line-clamp-2 hover:text-primary">

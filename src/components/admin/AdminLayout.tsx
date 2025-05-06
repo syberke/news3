@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -29,15 +29,48 @@ import {
   Moon, 
   Sun,
   Bell,
-  Search
+  Search,
+  Ban,
+  MessageSquareX
 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { getAuth, signOut } from "firebase/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  onSnapshot,
+  orderBy, 
+  doc, 
+  updateDoc, 
+  deleteDoc,
+  getDoc
+} from "firebase/firestore";
 import { db } from "@/services/firebase";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+
+interface Notification {
+  id: string;
+  type: "comment_report" | "user_blocked";
+  commentId?: string;
+  userId?: string;
+  blockedUserId?: string;
+  reportedBy?: string;
+  reporterName?: string;
+  blockedByUserId?: string;
+  blockerName?: string;
+  createdAt: any;
+  read: boolean;
+  newsId?: string;
+}
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -46,12 +79,16 @@ interface AdminLayoutProps {
 
 const AdminLayout = ({ children, pageTitle }: AdminLayoutProps) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const auth = getAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const menuItems = [
     {
@@ -113,6 +150,31 @@ const AdminLayout = ({ children, pageTitle }: AdminLayoutProps) => {
     fetchUserAvatar();
   }, [user]);
 
+  // Fetch admin notifications
+  useEffect(() => {
+    if (!user || !isAdmin) return;
+
+    const notificationsQuery = query(
+      collection(db, "notifications"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
+      const notificationsList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Notification));
+      
+      setNotifications(notificationsList);
+      
+      // Count unread notifications
+      const unread = notificationsList.filter(notification => !notification.read).length;
+      setUnreadCount(unread);
+    });
+
+    return () => unsubscribe();
+  }, [user, isAdmin]);
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -137,6 +199,94 @@ const AdminLayout = ({ children, pageTitle }: AdminLayoutProps) => {
         description: `Mencari "${searchQuery}"`,
       });
     }
+  };
+
+  const markNotificationAsRead = async (notificationId: string) => {
+    const notificationRef = doc(db, "notifications", notificationId);
+    await updateDoc(notificationRef, { read: true });
+  };
+
+  const handleNotificationClick = async (notification: Notification) => {
+    // Mark as read
+    await markNotificationAsRead(notification.id);
+    
+    // Handle different notification types
+    if (notification.type === "comment_report" && notification.newsId) {
+      // Navigate to the news detail page
+      navigate(`/news/${notification.newsId}`);
+      setNotificationsOpen(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string, notificationId: string) => {
+    try {
+      // Delete the comment
+      const commentRef = doc(db, "comments", commentId);
+      await deleteDoc(commentRef);
+      
+      // Mark notification as read
+      await markNotificationAsRead(notificationId);
+      
+      toast({
+        title: "Comment Deleted",
+        description: "The reported comment has been deleted"
+      });
+    } catch (error) {
+      console.error("Error deleting comment:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete comment",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleBanUser = async (userId: string, notificationId: string) => {
+    try {
+      // Ban the user by updating their document
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, { 
+        isBanned: true,
+        bannedAt: new Date().toISOString()
+      });
+      
+      // Mark notification as read
+      await markNotificationAsRead(notificationId);
+      
+      toast({
+        title: "User Banned",
+        description: "The user has been banned"
+      });
+    } catch (error) {
+      console.error("Error banning user:", error);
+      toast({
+        title: "Error",
+        description: "Failed to ban user",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const formatNotificationTime = (timestamp: any) => {
+    if (!timestamp || !timestamp.toDate) {
+      return "Just now";
+    }
+    
+    const date = timestamp.toDate();
+    const now = new Date();
+    const diff = (now.getTime() - date.getTime()) / 1000; // difference in seconds
+    
+    if (diff < 60) return "Just now";
+    if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`;
+    
+    const options: Intl.DateTimeFormatOptions = { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    };
+    return date.toLocaleDateString(undefined, options);
   };
 
   return (
@@ -229,10 +379,110 @@ const AdminLayout = ({ children, pageTitle }: AdminLayoutProps) => {
                   <h1 className="ml-4 text-xl font-semibold">{pageTitle}</h1>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="h-5 w-5" />
-                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
-                  </Button>
+                  <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="icon" className="relative">
+                        <Bell className="h-5 w-5" />
+                        {unreadCount > 0 && (
+                          <span className="absolute top-0 right-0 h-5 w-5 rounded-full bg-red-500 flex items-center justify-center text-white text-xs">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0 max-h-96 overflow-auto">
+                      <div className="p-3 border-b border-border">
+                        <h4 className="font-semibold">Notifications</h4>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {notifications.length === 0 ? (
+                          <div className="p-4 text-center text-muted-foreground">
+                            No notifications
+                          </div>
+                        ) : (
+                          notifications.map((notification) => (
+                            <div 
+                              key={notification.id}
+                              className={`p-3 ${notification.read ? 'bg-background' : 'bg-muted/30'}`}
+                            >
+                              {notification.type === "comment_report" && (
+                                <div>
+                                  <div className="flex justify-between">
+                                    <p className="text-sm font-medium">
+                                      <span className="font-semibold">{notification.reporterName}</span> reported a comment
+                                    </p>
+                                    <span className="text-xs text-muted-foreground">
+                                      {formatNotificationTime(notification.createdAt)}
+                                    </span>
+                                  </div>
+                                  <div className="flex mt-2 gap-2">
+                                    <Button 
+                                      variant="outline"
+                                      size="sm"
+                                      className="w-full text-xs"
+                                      onClick={() => handleNotificationClick(notification)}
+                                    >
+                                      View
+                                    </Button>
+                                    <Button 
+                                      variant="outline"
+                                      size="sm"
+                                      className="w-full text-xs flex items-center gap-1"
+                                      onClick={() => handleDeleteComment(notification.commentId!, notification.id)}
+                                    >
+                                      <MessageSquareX className="h-3 w-3" />
+                                      Delete Comment
+                                    </Button>
+                                    <Button 
+                                      variant="destructive"
+                                      size="sm"
+                                      className="w-full text-xs flex items-center gap-1"
+                                      onClick={() => handleBanUser(notification.userId!, notification.id)}
+                                    >
+                                      <Ban className="h-3 w-3" />
+                                      Ban User
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {notification.type === "user_blocked" && (
+                                <div>
+                                  <div className="flex justify-between">
+                                    <p className="text-sm">
+                                      <span className="font-semibold">{notification.blockerName}</span> blocked a user
+                                    </p>
+                                    <span className="text-xs text-muted-foreground">
+                                      {formatNotificationTime(notification.createdAt)}
+                                    </span>
+                                  </div>
+                                  <div className="flex mt-2 gap-2">
+                                    <Button 
+                                      variant="destructive"
+                                      size="sm"
+                                      className="w-full text-xs flex items-center gap-1"
+                                      onClick={() => handleBanUser(notification.blockedUserId!, notification.id)}
+                                    >
+                                      <Ban className="h-3 w-3" />
+                                      Ban User
+                                    </Button>
+                                    <Button 
+                                      variant="outline"
+                                      size="sm"
+                                      className="w-full text-xs"
+                                      onClick={() => markNotificationAsRead(notification.id)}
+                                    >
+                                      Dismiss
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
                     {userAvatar ? (
                       <Avatar className="h-8 w-8">

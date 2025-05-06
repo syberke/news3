@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import NewsletterSubscribe from "@/components/newsletter/NewsletterSubscribe";
+import CommentSection from "@/components/comments/CommentSection";
+import { useAuth } from "@/context/AuthContext";
 
 interface NewsItem {
   id: string;
@@ -21,6 +23,7 @@ interface NewsItem {
   date: string;
   imageUrl: string;
   likes?: number;
+  commentsCount?: number;
 }
 
 const NewsDetailSkeleton = () => {
@@ -70,10 +73,10 @@ const NewsDetail = () => {
   const { id } = useParams<{ id: string }>();
   const [news, setNews] = useState<NewsItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [liked, setLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(0);
+  const [commentsCount, setCommentsCount] = useState(0);
   const db = getFirestore();
   const { toast } = useToast();
+  const { user, hasLikedArticle, addLikedArticle } = useAuth();
 
   useEffect(() => {
     if (id) {
@@ -95,7 +98,7 @@ const NewsDetail = () => {
         
         setNews(newsData);
         // Initialize likes count
-        setLikesCount(newsData.likes || 0);
+        setCommentsCount(newsData.commentsCount || 0);
       } else {
         console.error("News not found");
       }
@@ -137,7 +140,22 @@ const NewsDetail = () => {
   };
 
   const handleLike = async () => {
-    if (!id || liked) return;
+    if (!id || !user) {
+      toast({
+        title: "Login Required",
+        description: "Please login to like articles",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (hasLikedArticle(id)) {
+      toast({
+        title: "Already liked",
+        description: "You've already liked this article",
+      });
+      return;
+    }
     
     try {
       // Update likes in Firestore
@@ -146,8 +164,17 @@ const NewsDetail = () => {
         likes: increment(1)
       });
       
-      setLikesCount(prev => prev + 1);
-      setLiked(true);
+      // Add to user's liked articles
+      await addLikedArticle(id);
+      
+      // Update the UI
+      setNews(prevNews => {
+        if (!prevNews) return null;
+        return {
+          ...prevNews,
+          likes: (prevNews.likes || 0) + 1
+        };
+      });
       
       toast({
         title: "Liked!",
@@ -162,6 +189,22 @@ const NewsDetail = () => {
       });
     }
   };
+
+  const handleCommentCountChange = (count: number) => {
+    setCommentsCount(count);
+    
+    // Update commentsCount in the news document if we have news
+    if (id && news) {
+      const newsRef = doc(db, "news", id);
+      updateDoc(newsRef, {
+        commentsCount: count
+      }).catch(error => {
+        console.error("Error updating comment count:", error);
+      });
+    }
+  };
+
+  const isLiked = id ? hasLikedArticle(id) : false;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -225,12 +268,12 @@ const NewsDetail = () => {
                         variant="ghost" 
                         className="flex items-center gap-2"
                         onClick={handleLike}
-                        disabled={liked}
+                        disabled={isLiked}
                       >
-                        <Heart className={`h-5 w-5 ${liked ? 'fill-red-500 text-red-500' : ''}`} />
-                        <span>{liked ? 'Liked' : 'Like'}</span>
+                        <Heart className={`h-5 w-5 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+                        <span>{isLiked ? 'Liked' : 'Like'}</span>
                       </Button>
-                      <span className="text-muted-foreground">{likesCount} likes</span>
+                      <span className="text-muted-foreground">{(news.likes || 0)} likes</span>
                     </div>
                     
                     <Button 
@@ -242,6 +285,16 @@ const NewsDetail = () => {
                       <span>Share</span>
                     </Button>
                   </div>
+                  
+                  <Separator className="my-8" />
+                  
+                  {/* Comments Section */}
+                  {id && (
+                    <CommentSection 
+                      newsId={id} 
+                      onCommentCountChange={handleCommentCountChange} 
+                    />
+                  )}
                 </CardContent>
               </Card>
 

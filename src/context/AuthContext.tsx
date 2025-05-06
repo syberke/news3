@@ -2,7 +2,8 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { 
   User, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  sendEmailVerification
 } from "firebase/auth";
 import { 
   doc,
@@ -10,6 +11,7 @@ import {
   setDoc
 } from "firebase/firestore";
 import { auth, db } from "@/services/firebase";
+import { useToast } from "@/hooks/use-toast";
 
 type UserRole = "Admin" | "User";
 
@@ -19,6 +21,11 @@ type AuthContextType = {
   userRole: UserRole | null;
   isLoading: boolean;
   setUserRole: (uid: string, role: UserRole) => Promise<void>;
+  likedArticles: string[];
+  addLikedArticle: (articleId: string) => Promise<void>;
+  hasLikedArticle: (articleId: string) => boolean;
+  isVerified: boolean;
+  sendVerificationEmail: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -26,7 +33,12 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   userRole: null,
   isLoading: true,
-  setUserRole: async () => {}
+  setUserRole: async () => {},
+  likedArticles: [],
+  addLikedArticle: async () => {},
+  hasLikedArticle: () => false,
+  isVerified: false,
+  sendVerificationEmail: async () => {}
 });
 
 // Default admin email
@@ -37,6 +49,35 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userRole, setUserRoleState] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [likedArticles, setLikedArticles] = useState<string[]>([]);
+  const [isVerified, setIsVerified] = useState(false);
+  const { toast } = useToast();
+
+  // Function to send verification email
+  const sendVerificationEmail = async () => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "No user is logged in",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      await sendEmailVerification(user);
+      toast({
+        title: "Email Sent",
+        description: "Verification email has been sent to your inbox."
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
 
   // Function to update a user's role
   const setUserRole = async (uid: string, role: UserRole) => {
@@ -61,6 +102,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  // Function to add an article to the user's liked articles
+  const addLikedArticle = async (articleId: string) => {
+    if (!user) return;
+    
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const updatedLikedArticles = [...likedArticles, articleId];
+      
+      await setDoc(userRef, { 
+        likedArticles: updatedLikedArticles 
+      }, { merge: true });
+      
+      setLikedArticles(updatedLikedArticles);
+    } catch (error) {
+      console.error("Error adding liked article:", error);
+      throw error;
+    }
+  };
+
+  // Function to check if user has liked an article
+  const hasLikedArticle = (articleId: string): boolean => {
+    return likedArticles.includes(articleId);
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
@@ -78,12 +143,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserRoleState(role);
             setIsAdmin(role === "Admin" || userData.isAdmin === true);
             
+            // Load liked articles if available
+            if (userData.likedArticles && Array.isArray(userData.likedArticles)) {
+              setLikedArticles(userData.likedArticles);
+            }
+            
+            // Check if user is verified
+            const isUserVerified = userData.isVerified === true || role === "Admin" || user.email === ADMIN_EMAIL;
+            setIsVerified(isUserVerified);
+            
             // Update lastLogin time
             await setDoc(userRef, { lastLogin: new Date().toISOString() }, { merge: true });
           } else {
             // Create new user with default role
             // Always make admin@firenews.com an admin
             const defaultRole: UserRole = user.email === ADMIN_EMAIL ? "Admin" : "User";
+            const isUserVerified = user.email === ADMIN_EMAIL || defaultRole === "Admin" || user.emailVerified;
+            
             await setDoc(userRef, { 
               email: user.email,
               role: defaultRole,
@@ -91,10 +167,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               createdAt: new Date().toISOString(),
               lastLogin: new Date().toISOString(),
               displayName: user.displayName || user.email?.split('@')[0],
-              photoURL: user.photoURL
+              photoURL: user.photoURL,
+              likedArticles: [],
+              isVerified: isUserVerified
             });
             setUserRoleState(defaultRole);
             setIsAdmin(defaultRole === "Admin");
+            setLikedArticles([]);
+            setIsVerified(isUserVerified);
+            
+            // Send verification email if not admin and not already verified
+            if (!isUserVerified && defaultRole !== "Admin" && user.email !== ADMIN_EMAIL && !user.emailVerified) {
+              await sendEmailVerification(user);
+            }
           }
         } catch (error) {
           console.error("Error checking admin status:", error);
@@ -102,10 +187,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           const isDefaultAdmin = user.email === ADMIN_EMAIL;
           setUserRoleState(isDefaultAdmin ? "Admin" : "User");
           setIsAdmin(isDefaultAdmin);
+          setIsVerified(isDefaultAdmin || user.emailVerified);
         }
       } else {
         setUserRoleState(null);
         setIsAdmin(false);
+        setLikedArticles([]);
+        setIsVerified(false);
       }
       
       setIsLoading(false);
@@ -115,7 +203,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isAdmin, userRole, isLoading, setUserRole }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isAdmin, 
+      userRole, 
+      isLoading, 
+      setUserRole,
+      likedArticles,
+      addLikedArticle,
+      hasLikedArticle,
+      isVerified,
+      sendVerificationEmail
+    }}>
       {children}
     </AuthContext.Provider>
   );

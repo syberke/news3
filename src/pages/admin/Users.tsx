@@ -7,7 +7,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Search, User, Edit, Trash, UserPlus, UserCheck, UserX } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { fetchAllUsers, User as UserType } from "@/services/userService";
+import { fetchAllUsers, User as UserType, verifyUser } from "@/services/userService";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Dialog, 
@@ -131,6 +131,23 @@ const AdminUsers = () => {
       toast({
         title: "Error",
         description: error.message || "Gagal memperbarui pengguna",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleVerifyUser = async (userId: string) => {
+    try {
+      await verifyUser(userId);
+      toast({
+        title: "Berhasil",
+        description: "Pengguna berhasil diverifikasi"
+      });
+      loadUsers();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Gagal memverifikasi pengguna",
         variant: "destructive"
       });
     }
@@ -291,6 +308,7 @@ const AdminUsers = () => {
                       <TableHead>Pengguna</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Verifikasi</TableHead>
                       <TableHead>Last Login</TableHead>
                       <TableHead>Aksi</TableHead>
                     </TableRow>
@@ -316,6 +334,13 @@ const AdminUsers = () => {
                               <Badge variant="secondary">User</Badge>
                             )}
                           </TableCell>
+                          <TableCell>
+                            {user.isVerified ? (
+                              <Badge variant="success" className="bg-green-500">Terverifikasi</Badge>
+                            ) : (
+                              <Badge variant="destructive">Belum Verifikasi</Badge>
+                            )}
+                          </TableCell>
                           <TableCell>{user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}</TableCell>
                           <TableCell>
                             <div className="flex space-x-2">
@@ -329,6 +354,16 @@ const AdminUsers = () => {
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
+                              {!user.isVerified && !user.isAdmin && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="text-green-600 hover:bg-green-50"
+                                  onClick={() => handleVerifyUser(user.id)}
+                                >
+                                  <UserCheck className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="icon"
@@ -346,7 +381,7 @@ const AdminUsers = () => {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center">
+                        <TableCell colSpan={6} className="text-center">
                           {searchTerm ? "Tidak ada pengguna yang sesuai dengan pencarian" : "Belum ada pengguna"}
                         </TableCell>
                       </TableRow>
