@@ -1,8 +1,4 @@
-# Welcome to your Lovable project
-
-## Project info
-
-**URL**: https://lovable.dev/projects/be078038-3e4c-4e76-9d8d-236cc6c657dd
+# Welcome to React Project
 
 ## How can I edit this code?
 
